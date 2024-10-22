@@ -5,6 +5,12 @@
   "permissions": [
     "activeTab"
   ],
+  "icons": {
+    "16": "assets/icon-16.png",
+    "34": "assets/icon-34.png",
+    "48": "assets/icon-48.png",
+    "128": "assets/icon-128.png"
+  },
   "background": {
     "service_worker": "src/background.js"
   },

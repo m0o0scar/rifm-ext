@@ -10,6 +10,16 @@
  * @property {CaptionTrack[]} captions.playerCaptionsTracklistRenderer.captionTracks
  */
 
+/**
+ * Send a message to the background script to update the badge text of the
+ * chrome extension.
+ *
+ * @param {string} [text] the text to set as the badge text
+ */
+function updateBadgeText(text = '') {
+  chrome.runtime.sendMessage({ action: 'updateBadgeText', text });
+}
+
 function rifm() {
   if (['www.youtube.com', 'youtube.com'].includes(location.host)) {
     readYouTubeForMe();
@@ -18,64 +28,35 @@ function rifm() {
   }
 }
 
-function readYouTubeForMe() {
-  // find the init player response data from page
-  const start = 'var ytInitialPlayerResponse = ';
-  const end = '};';
-  const script = [...document.body.querySelectorAll('script')].find((s) =>
-    s.innerText.includes(start),
-  );
+async function readYouTubeForMe() {
+  try {
+    updateBadgeText('...');
 
-  if (script) {
-    const text = script.innerText;
-    const i = text.indexOf(start) + start.length;
-    const j = text.indexOf(end, i);
-    const code = text.substring(i, j + 1);
+    // fetch html of current page
+    const pageResponse = await fetch(window.location.href);
+    const pageHtml = await pageResponse.text();
 
-    try {
-      /** @type {YouTubeInitialPlayerResponse} */
-      const data = JSON.parse(code);
+    // ask rifm api to get caption url
+    const captionResponse = await fetch(
+      'https://rifm.vercel.app/api/public/youtube/caption',
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          html: pageHtml,
+        }),
+      },
+    );
+    const result = await captionResponse.text();
 
-      const weighted =
-        data.captions.playerCaptionsTracklistRenderer.captionTracks.map(
-          (track) => {
-            let weight = 0;
-
-            // en, en-xx, zh-xx, others
-            if (track.languageCode === 'en') {
-              weight = 1;
-            } else if (track.languageCode.startsWith('en')) {
-              weight = 2;
-            } else if (track.languageCode.startsWith('zh')) {
-              weight = 3;
-            } else {
-              weight = 4;
-            }
-
-            if (track.kind === 'asr') weight += 10;
-
-            return { ...track, weight };
-          },
-        );
-
-      const sorted = weighted.sort((a, b) => {
-        if (a.weight !== b.weight) {
-          return a.weight - b.weight;
-        }
-        return a.languageCode.localeCompare(b.languageCode);
-      });
-
-      if (sorted[0]) {
-        const pageUrl = encodeURIComponent(window.location.href);
-        const captionUrl = encodeURIComponent(sorted[0].baseUrl);
-        const dest = `https://rifm.vercel.app?source=${pageUrl}&caption=${captionUrl}`;
-        window.open(dest, '_blank');
-      } else {
-        throw new Error('No caption track found');
-      }
-    } catch (error) {
-      alert(`Fail to find caption track from the page: ${String(error)}`);
-    }
+    // navigate to rifm page
+    const pageUrl = encodeURIComponent(window.location.href);
+    const captionUrl = encodeURIComponent(result);
+    const dest = `https://rifm.vercel.app?source=${pageUrl}&caption=${captionUrl}`;
+    window.open(dest, '_blank');
+  } catch (error) {
+    alert(`Fail to read caption from the page: ${String(error)}`);
+  } finally {
+    updateBadgeText();
   }
 }
 
